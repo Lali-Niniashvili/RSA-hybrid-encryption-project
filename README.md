@@ -1,11 +1,13 @@
-# RSA-hybrid-encryption-project
-# RSA Hybrid Encryption Demo
+# Secure Messaging Demo
 
-This project demonstrates **hybrid RSA-AES encryption with signing** in Python.
+A beginner-friendly Python project demonstrating secure messaging using hybrid encryption.
 
-- RSA-OAEP is used to encrypt a random AES key
-- AES-GCM encrypts the actual message/file
-- RSA-PSS signs the ciphertext for integrity and authenticity
+Features:
+- RSA key generation (2048-bit)
+- AES-128-GCM message encryption
+- RSA-OAEP for encrypting AES keys
+- RSA-PSS signatures for authenticity
+- Example: Alice sends a message to Bob, Bob verifies and decrypts
 
 ---
 

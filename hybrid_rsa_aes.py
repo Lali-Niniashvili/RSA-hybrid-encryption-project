@@ -1,22 +1,20 @@
-
+import os
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-import os
 
 # -------- RSA Key Generation --------
-def generate_rsa_keypair():
+def generate_rsa_keypair(passphrase: bytes = b"mypassword"):
     private_key = rsa.generate_private_key(
         public_exponent=65537,
-        key_size=3072
+        key_size=2048
     )
     public_key = private_key.public_key()
 
-    # Export PEM
     priv_pem = private_key.private_bytes(
         encoding=serialization.Encoding.PEM,
         format=serialization.PrivateFormat.PKCS8,
-        encryption_algorithm=serialization.BestAvailableEncryption(b"strong-passphrase")
+        encryption_algorithm=serialization.BestAvailableEncryption(passphrase)
     )
     pub_pem = public_key.public_bytes(
         encoding=serialization.Encoding.PEM,
@@ -25,17 +23,13 @@ def generate_rsa_keypair():
     return priv_pem, pub_pem
 
 # -------- Hybrid Encryption --------
-def hybrid_encrypt(plaintext: bytes, recipient_pubkey):
-    # AES key and nonce
-    aes_key = AESGCM.generate_key(bit_length=256)
+def encrypt_message(message: str, recipient_pubkey):
+    aes_key = AESGCM.generate_key(bit_length=128)  # beginner-friendly AES-128
     aesgcm = AESGCM(aes_key)
     iv = os.urandom(12)
+    ciphertext = aesgcm.encrypt(iv, message.encode(), None)
 
-    # AES encrypt
-    ciphertext = aesgcm.encrypt(iv, plaintext, None)
-
-    # RSA-OAEP encrypt AES key
-    encrypted_key = recipient_pubkey.encrypt(
+    enc_key = recipient_pubkey.encrypt(
         aes_key,
         padding.OAEP(
             mgf=padding.MGF1(hashes.SHA256()),
@@ -44,14 +38,10 @@ def hybrid_encrypt(plaintext: bytes, recipient_pubkey):
         )
     )
 
-    return {
-        "enc_key": encrypted_key,
-        "iv": iv,
-        "ciphertext": ciphertext
-    }
+    return {"enc_key": enc_key, "iv": iv, "ciphertext": ciphertext}
 
-# -------- Hybrid Decryption --------
-def hybrid_decrypt(package: dict, recipient_privkey):
+# -------- Decryption --------
+def decrypt_message(package: dict, recipient_privkey, passphrase: bytes = b"mypassword"):
     aes_key = recipient_privkey.decrypt(
         package["enc_key"],
         padding.OAEP(
@@ -62,7 +52,7 @@ def hybrid_decrypt(package: dict, recipient_privkey):
     )
     aesgcm = AESGCM(aes_key)
     plaintext = aesgcm.decrypt(package["iv"], package["ciphertext"], None)
-    return plaintext
+    return plaintext.decode()
 
 # -------- Signing --------
 def sign_message(message: bytes, signer_privkey):
@@ -90,22 +80,27 @@ def verify_signature(message: bytes, signature: bytes, signer_pubkey):
     except Exception:
         return False
 
-# -------- Example Usage --------
+# -------- Demo --------
 if __name__ == "__main__":
-    # Generate keys (or load from files)
-    priv_pem, pub_pem = generate_rsa_keypair()
-    private_key = serialization.load_pem_private_key(priv_pem, password=b"strong-passphrase")
-    public_key = serialization.load_pem_public_key(pub_pem)
+    # Alice generates keys
+    alice_priv_pem, alice_pub_pem = generate_rsa_keypair()
+    alice_private_key = serialization.load_pem_private_key(alice_priv_pem, password=b"mypassword")
+    alice_public_key = serialization.load_pem_public_key(alice_pub_pem)
 
-    message = b"This is a secret message."
+    # Bob generates keys
+    bob_priv_pem, bob_pub_pem = generate_rsa_keypair()
+    bob_private_key = serialization.load_pem_private_key(bob_priv_pem, password=b"mypassword")
+    bob_public_key = serialization.load_pem_public_key(bob_pub_pem)
 
-    # Encrypt and sign
-    package = hybrid_encrypt(message, public_key)
-    signature = sign_message(package["ciphertext"], private_key)
+    # Alice sends a message to Bob
+    message = "Hello Bob, this is Alice."
+    package = encrypt_message(message, bob_public_key)
+    signature = sign_message(package["ciphertext"], alice_private_key)
 
-    # Verify and decrypt
-    is_valid = verify_signature(package["ciphertext"], signature, public_key)
-    recovered = hybrid_decrypt(package, private_key)
+    # Bob verifies signature and decrypts
+    valid = verify_signature(package["ciphertext"], signature, alice_public_key)
+    decrypted_message = decrypt_message(package, bob_private_key)
 
-    print("Signature valid:", is_valid)
-    print("Recovered message:", recovered.decode())
+    print("Signature valid:", valid)
+    print("Decrypted message:", decrypted_message)
+
